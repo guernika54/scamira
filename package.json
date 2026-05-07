@@ -1,0 +1,17 @@
+{
+  "name": "scamira",
+  "version": "0.1.0",
+  "description": "SNSの副業系発信に含まれる情弱ビジネス・パターンを検出するオープンソースツール",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20251001.0",
+    "typescript": "^5.6.0",
+    "wrangler": "^4.0.0"
+  }
+}

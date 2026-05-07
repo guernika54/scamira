@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scamira — SNS情弱ビジネス・パターン検出ツール</title>
+<meta name="description" content="SNSの副業系発信に含まれる情弱ビジネス・パターンを構造的に検出するオープンソースツール。">
+<meta property="og:title" content="Scamira">
+<meta property="og:description" content="SNSの情弱ビジネス・パターンを可視化するオープンソースツール">
+<meta property="og:type" content="website">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "ヒラギノ角ゴ ProN", "Yu Gothic", sans-serif; }
+</style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+<div class="max-w-3xl mx-auto px-4 py-10 sm:py-16">
+
+  <header class="mb-10">
+    <div class="flex items-baseline gap-3 mb-3">
+      <h1 class="text-3xl sm:text-4xl font-bold tracking-tight">Scamira</h1>
+      <span class="text-xs text-slate-500">v0.1 — open beta</span>
+    </div>
+    <p class="text-slate-400 leading-relaxed text-sm sm:text-base">
+      SNSの副業系発信に含まれる<strong class="text-amber-400">情弱ビジネス・パターン</strong>を構造的に検出するオープンソースツール。
+      投稿のテキストを貼り付けると、誘導の構造・パターン・スコアを可視化します。
+    </p>
+  </header>
+
+  <main>
+    <section class="mb-8">
+      <label for="post-text" class="block text-sm font-medium mb-2 text-slate-300">
+        投稿のキャプション・スクリプトを貼り付け
+      </label>
+      <textarea id="post-text" rows="10" maxlength="10000"
+        placeholder="例：気になる人は『副業』ってコメントしてね！寝てる間に売れる仕組みを公式LINEで配布中..."
+        class="w-full bg-slate-900 border border-slate-700 rounded-lg p-4 text-sm leading-relaxed focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition resize-y"></textarea>
+      <div class="flex items-center justify-between mt-3">
+        <span id="char-count" class="text-xs text-slate-500">0 / 10000</span>
+        <button id="analyze-btn" type="button"
+          class="px-5 py-2.5 bg-amber-500 text-slate-950 font-bold rounded-lg hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed transition">
+          分析する
+        </button>
+      </div>
+    </section>
+
+    <section id="result" class="hidden"></section>
+
+    <section class="mt-12 p-5 bg-slate-900/50 border border-slate-800 rounded-lg text-sm text-slate-400 leading-relaxed">
+      <h2 class="font-medium text-slate-200 mb-2">透明性ポリシー</h2>
+      <ul class="space-y-1 list-disc list-inside">
+        <li>検出ロジック・プロンプトは<a href="https://github.com/guernika54/scamira" id="gh-method" class="text-amber-400 hover:underline">完全公開</a>しています</li>
+        <li>本ツールは<strong class="text-slate-200">投稿の構造</strong>のみを分析し、発信者個人の人格・法的評価は行いません</li>
+        <li>「詐欺」「悪質」と判定するものではなく、<strong class="text-slate-200">パターンの可視化</strong>を目的としています</li>
+        <li>誤判定があれば<a href="#" class="text-amber-400 hover:underline">異議申立て</a>から修正します</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="mt-12 pt-8 border-t border-slate-800 text-xs text-slate-500 flex flex-wrap gap-x-4 gap-y-2">
+    <a href="/methodology.html" class="hover:text-amber-400">検出方法論</a>
+    <a href="https://github.com/guernika54/scamira" id="gh-link" class="hover:text-amber-400">GitHub</a>
+    <a href="#" class="hover:text-amber-400">異議申立て</a>
+    <span class="ml-auto">© 2026 Scamira contributors · MIT License</span>
+  </footer>
+</div>
+
+<script>
+const btn = document.getElementById('analyze-btn');
+const ta = document.getElementById('post-text');
+const result = document.getElementById('result');
+const charCount = document.getElementById('char-count');
+
+ta.addEventListener('input', () => {
+  charCount.textContent = `${ta.value.length} / 10000`;
+});
+
+btn.addEventListener('click', async () => {
+  const text = ta.value.trim();
+  if (!text) {
+    ta.focus();
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '分析中...';
+  result.classList.add('hidden');
+
+  try {
+    const r = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+    renderResult(data);
+  } catch (e) {
+    result.innerHTML = `<div class="bg-red-900/30 border border-red-800 rounded-lg p-4 text-sm text-red-200">エラー: ${escapeHTML(e.message)}</div>`;
+    result.classList.remove('hidden');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '分析する';
+  }
+});
+
+function renderResult(data) {
+  const score = Number(data.score) || 0;
+  const scoreColor =
+    score >= 70 ? 'text-red-400' :
+    score >= 40 ? 'text-amber-400' :
+    'text-emerald-400';
+  const scoreLabel =
+    score >= 70 ? '高リスク' :
+    score >= 40 ? '注意' :
+    '低リスク';
+
+  const signalStyles = {
+    strong: 'border-l-red-500 bg-red-900/15',
+    medium: 'border-l-amber-500 bg-amber-900/15',
+    weak:   'border-l-slate-500 bg-slate-900/40',
+  };
+  const signalLabels = { strong: '強', medium: '中', weak: '弱' };
+
+  const signalsHTML = (data.signals || []).map(s => `
+    <div class="border-l-4 ${signalStyles[s.category] || signalStyles.weak} px-4 py-3 mb-2 rounded-r">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-medium">${signalLabels[s.category] || '?'}</span>
+        <span class="font-medium text-slate-100">${escapeHTML(s.pattern || '')}</span>
+      </div>
+      <div class="text-sm text-slate-400 leading-relaxed">「${escapeHTML(s.evidence || '')}」</div>
+    </div>
+  `).join('');
+
+  result.innerHTML = `
+    <div class="bg-slate-900 border border-slate-800 rounded-lg p-6 sm:p-7">
+      <div class="mb-6 flex items-end gap-4">
+        <div>
+          <div class="text-xs text-slate-400 mb-1 uppercase tracking-wider">情弱ビジネス度</div>
+          <div class="text-5xl sm:text-6xl font-bold ${scoreColor} leading-none">${score}<span class="text-2xl text-slate-500 ml-1">/100</span></div>
+        </div>
+        <div class="text-sm font-medium ${scoreColor} pb-2">${scoreLabel}</div>
+      </div>
+
+      <div class="mb-6">
+        <h3 class="text-xs font-medium text-slate-400 mb-3 uppercase tracking-wider">検出されたパターン (${(data.signals || []).length}件)</h3>
+        ${(data.signals || []).length === 0
+          ? '<p class="text-sm text-slate-500">特定のパターンは検出されませんでした。</p>'
+          : signalsHTML}
+      </div>
+
+      <div class="mb-4">
+        <h3 class="text-xs font-medium text-slate-400 mb-2 uppercase tracking-wider">分析サマリー</h3>
+        <p class="text-sm leading-relaxed text-slate-200">${escapeHTML(data.summary || '')}</p>
+      </div>
+
+      <p class="text-xs text-slate-500 mt-5 pt-4 border-t border-slate-800 leading-relaxed">${escapeHTML(data.disclaimer || '')}</p>
+    </div>
+  `;
+  result.classList.remove('hidden');
+  result.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function escapeHTML(s) {
+  return String(s)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+</script>
+</body>
+</html>
