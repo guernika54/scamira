@@ -1,8 +1,13 @@
 import { ANALYSIS_PROMPT } from "./prompts";
 
+interface RateLimit {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
+}
+
 interface Env {
   ANTHROPIC_API_KEY: string;
   ASSETS: Fetcher;
+  ANALYZE_LIMITER?: RateLimit;
 }
 
 interface AnalyzeRequest {
@@ -52,6 +57,21 @@ async function handleAnalyze(request: Request, env: Env): Promise<Response> {
       { error: "server is not configured (missing ANTHROPIC_API_KEY)" },
       { status: 500 },
     );
+  }
+
+  // Rate limit: 10 requests per minute per IP (best-effort, eventually consistent)
+  if (env.ANALYZE_LIMITER) {
+    const ip = request.headers.get("cf-connecting-ip") || "unknown";
+    const result = await env.ANALYZE_LIMITER.limit({ key: ip });
+    if (!result.success) {
+      return Response.json(
+        {
+          error:
+            "リクエストが多すぎます。1分間に10回までです。少し待ってから再試行してください。",
+        },
+        { status: 429, headers: { "retry-after": "60" } },
+      );
+    }
   }
 
   let body: AnalyzeRequest;

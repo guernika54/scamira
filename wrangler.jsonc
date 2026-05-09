@@ -8,6 +8,13 @@
     { "pattern": "scamira.com", "custom_domain": true },
     { "pattern": "www.scamira.com", "custom_domain": true }
   ],
+  "ratelimits": [
+    {
+      "name": "ANALYZE_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 10, "period": 60 }
+    }
+  ],
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
