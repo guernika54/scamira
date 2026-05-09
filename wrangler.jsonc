@@ -15,6 +15,12 @@
       "simple": { "limit": 10, "period": 60 }
     }
   ],
+  "kv_namespaces": [
+    {
+      "binding": "RESULTS",
+      "id": "eb9d4618491d409b805f11f5d7d10a0c"
+    }
+  ],
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",

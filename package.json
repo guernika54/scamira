@@ -1,6 +1,6 @@
 {
   "name": "scamira",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "SNSの副業系発信に含まれる情弱ビジネス・パターンを検出するオープンソースツール",
   "private": true,
   "type": "module",

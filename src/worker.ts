@@ -4,10 +4,29 @@ interface RateLimit {
   limit(options: { key: string }): Promise<{ success: boolean }>;
 }
 
+interface KVNamespace {
+  get(key: string): Promise<string | null>;
+  put(
+    key: string,
+    value: string,
+    options?: { expirationTtl?: number },
+  ): Promise<void>;
+}
+
+interface AnalyticsEngineDataset {
+  writeDataPoint(point: {
+    blobs?: string[];
+    doubles?: number[];
+    indexes?: string[];
+  }): void;
+}
+
 interface Env {
   ANTHROPIC_API_KEY: string;
   ASSETS: Fetcher;
   ANALYZE_LIMITER?: RateLimit;
+  RESULTS?: KVNamespace;
+  STATS?: AnalyticsEngineDataset;
 }
 
 interface AnalyzeRequest {
@@ -25,19 +44,23 @@ interface AnalyzeResult {
   signals: Signal[];
   summary: string;
   disclaimer: string;
+  shareId?: string;
+  shareUrl?: string;
 }
 
 const DISCLAIMER =
   "本ツールはパターン検出のみを行うものであり、特定の個人や事業者に対する評価や法的判断を行うものではありません。最終的な判断は利用者自身が行ってください。";
 
 const MAX_INPUT_LENGTH = 10_000;
+const ID_LENGTH = 10;
+const RESULT_TTL_SECONDS = 60 * 60 * 24 * 90; // 90 days
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
     if (url.pathname === "/api/health") {
-      return Response.json({ ok: true, version: "0.1.0" });
+      return Response.json({ ok: true, version: "0.2.0" });
     }
 
     if (url.pathname === "/api/analyze") {
@@ -47,9 +70,51 @@ export default {
       return handleAnalyze(request, env);
     }
 
+    if (url.pathname.startsWith("/api/result/")) {
+      return handleGetResult(url.pathname.slice("/api/result/".length), env);
+    }
+
+    if (url.pathname === "/api/stats") {
+      return handleGetStats(env);
+    }
+
     return env.ASSETS.fetch(request);
   },
 };
+
+const STATS_TOTAL_KEY = "stats:total";
+
+async function handleGetStats(env: Env): Promise<Response> {
+  if (!env.RESULTS) {
+    return Response.json({ total: 0 });
+  }
+  try {
+    const stored = await env.RESULTS.get(STATS_TOTAL_KEY);
+    const total = stored ? parseInt(stored, 10) : 0;
+    return Response.json(
+      { total: isNaN(total) ? 0 : total },
+      {
+        headers: {
+          "cache-control": "public, max-age=60",
+        },
+      },
+    );
+  } catch {
+    return Response.json({ total: 0 });
+  }
+}
+
+async function incrementStats(env: Env): Promise<void> {
+  if (!env.RESULTS) return;
+  try {
+    const stored = await env.RESULTS.get(STATS_TOTAL_KEY);
+    const current = stored ? parseInt(stored, 10) : 0;
+    const next = (isNaN(current) ? 0 : current) + 1;
+    await env.RESULTS.put(STATS_TOTAL_KEY, String(next));
+  } catch {
+    // best-effort, ignore
+  }
+}
 
 async function handleAnalyze(request: Request, env: Env): Promise<Response> {
   if (!env.ANTHROPIC_API_KEY) {
@@ -94,10 +159,73 @@ async function handleAnalyze(request: Request, env: Env): Promise<Response> {
 
   try {
     const result = await analyze(text, env.ANTHROPIC_API_KEY);
+
+    // Stats: record the analysis (anonymous, no text content stored)
+    if (env.STATS) {
+      try {
+        env.STATS.writeDataPoint({
+          blobs: ["analyze"],
+          doubles: [result.score],
+          indexes: ["analyze"],
+        });
+      } catch {
+        // ignore
+      }
+    }
+
+    // Save result to KV for shareable URL (best-effort, fail silently)
+    if (env.RESULTS) {
+      try {
+        const id = generateId();
+        const stored = JSON.stringify({
+          text,
+          result,
+          createdAt: Date.now(),
+        });
+        await env.RESULTS.put(id, stored, {
+          expirationTtl: RESULT_TTL_SECONDS,
+        });
+        result.shareId = id;
+        result.shareUrl = `https://scamira.com/a/${id}`;
+      } catch {
+        // KV failure should not break the analysis response
+      }
+    }
+
+    // Increment stats counter (best-effort)
+    await incrementStats(env);
+
     return Response.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown error";
     return Response.json({ error: message }, { status: 502 });
+  }
+}
+
+async function handleGetResult(id: string, env: Env): Promise<Response> {
+  if (!isValidId(id)) {
+    return Response.json({ error: "invalid id" }, { status: 400 });
+  }
+  if (!env.RESULTS) {
+    return Response.json({ error: "storage unavailable" }, { status: 503 });
+  }
+  const stored = await env.RESULTS.get(id);
+  if (!stored) {
+    return Response.json({ error: "not found" }, { status: 404 });
+  }
+  try {
+    const data = JSON.parse(stored) as {
+      text: string;
+      result: AnalyzeResult;
+      createdAt: number;
+    };
+    return Response.json({
+      text: data.text,
+      result: data.result,
+      createdAt: data.createdAt,
+    });
+  } catch {
+    return Response.json({ error: "corrupted data" }, { status: 500 });
   }
 }
 
@@ -165,4 +293,19 @@ function tryParse(s: string): Record<string, unknown> | null {
 
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
+}
+
+function generateId(length = ID_LENGTH): string {
+  const chars =
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  const bytes = crypto.getRandomValues(new Uint8Array(length));
+  let result = "";
+  for (let i = 0; i < length; i++) {
+    result += chars[bytes[i] % chars.length];
+  }
+  return result;
+}
+
+function isValidId(id: string): boolean {
+  return /^[a-zA-Z0-9]{6,20}$/.test(id);
 }
