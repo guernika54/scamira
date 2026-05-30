@@ -1,5 +1,9 @@
 # 検出方法論 / Detection Methodology
 
+> **For English readers:** This document explains Scamira's detection methodology. The full prompt is in [`src/prompts.ts`](../src/prompts.ts). In short: Scamira classifies funnel signals into **strong / medium / weak** tiers (Manychat-style comment-to-DM automation, exaggerated income claims, manufactured scarcity, mechanism opacity, list-building, etc.) and produces a 0–100 score based on how many signals appear and at what strength. It analyzes **post structure only** — never the individual poster — and deliberately avoids "scam" verdicts. The pattern taxonomy was tuned on Japanese social media but the underlying structure is universal; English posts are analyzed with the same criteria. Detailed tier definitions follow in Japanese below.
+
+---
+
 Scamiraがどのように「情弱ビジネス・パターン」を検出しているか、その全ロジックを公開します。
 
 ## 基本方針
