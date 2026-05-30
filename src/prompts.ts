@@ -81,3 +81,40 @@ export const ANALYSIS_PROMPT = `あなたは日本のSNS（Instagram、X、TikTo
 5. **判定が難しい場合**：シグナルが曖昧なら、低めのスコアにし、summaryでその旨を述べる。
 6. **正常な発信を誤判定しない**：技術ブログ、専門家の解説、書評、創作物などは構造的に違う。「商品が売れた」だけでは情弱ビジネスではない。誘導構造（コメント・DM・LINE登録への誘導）と組み合わさって初めて該当する。
 `;
+
+const EN_OUTPUT_DIRECTIVE = `
+
+## OUTPUT LANGUAGE OVERRIDE
+
+The user's interface language is **English**. Override the Japanese output format above:
+
+- "pattern" field: output in **English**. Translate the pattern names naturally:
+  - Manychatファネル誘導 → "Manychat funnel / comment-to-DM automation"
+  - 収入の誇大アピール → "Exaggerated income claims"
+  - 権威付けの過剰演出 → "Unverifiable authority signaling"
+  - 希少性・FOMO → "Scarcity / FOMO framing"
+  - メカニズムの不透明化 → "Mechanism opacity"
+  - 再販ビジネス（PLR/MRR） → "PLR/MRR resale funnel"
+  - 海外ECプラットフォーム×AI生成 → "AI-generated content × overseas marketplace (Etsy/Amazon Merch)"
+  - 努力否定 → "Effort denial"
+  - 未来損失フレーミング → "Future loss framing"
+  - 公式LINE誘導 → "Official LINE / messenger list-building"
+  - ライフスタイル演出 → "Lifestyle staging"
+  - ストーリー型導入 → "Personal-transformation story arc"
+  - 疑似的お客様の声 → "Unverifiable customer testimonials"
+  - 高額自己投資マウンティング → "Sunk-cost authority flex"
+  - ハッシュタグクラスタ → "Side-hustle hashtag cluster"
+  - 絵文字の過剰使用 → "Emoji overload"
+  - 「○○だけ」構文 → "'Just do X' simplification"
+  - 若年女性向けデザイン → "Aspirational feminine framing"
+- "summary" field: output in **English**, 100–200 words, factual and structural (no defamation or scam-verdict language).
+- "category" field: keep exactly as "strong" / "medium" / "weak" (do not translate).
+- "evidence" field: quote the original input text **verbatim** in its original language (do not translate).
+
+Note: although the pattern taxonomy was originally tuned for Japanese social media, the underlying funnel structure is universal. Apply the same detection criteria to English-language posts (US/global crypto, dropshipping, coaching, course-selling scams) without translating cultural context.
+`;
+
+export function buildPrompt(lang: "ja" | "en" = "ja"): string {
+  if (lang === "en") return ANALYSIS_PROMPT + EN_OUTPUT_DIRECTIVE;
+  return ANALYSIS_PROMPT;
+}

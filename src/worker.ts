@@ -1,4 +1,4 @@
-import { ANALYSIS_PROMPT } from "./prompts";
+import { buildPrompt } from "./prompts";
 
 interface RateLimit {
   limit(options: { key: string }): Promise<{ success: boolean }>;
@@ -31,6 +31,7 @@ interface Env {
 
 interface AnalyzeRequest {
   text: string;
+  lang?: "ja" | "en";
 }
 
 interface Signal {
@@ -48,8 +49,10 @@ interface AnalyzeResult {
   shareUrl?: string;
 }
 
-const DISCLAIMER =
+const DISCLAIMER_JA =
   "本ツールはパターン検出のみを行うものであり、特定の個人や事業者に対する評価や法的判断を行うものではありません。最終的な判断は利用者自身が行ってください。";
+const DISCLAIMER_EN =
+  "This tool performs pattern detection only. It does not constitute an evaluation, legal judgment, or accusation against any specific individual or business. Final interpretation is the user's responsibility.";
 
 const MAX_INPUT_LENGTH = 10_000;
 const ID_LENGTH = 10;
@@ -156,9 +159,10 @@ async function handleAnalyze(request: Request, env: Env): Promise<Response> {
       { status: 400 },
     );
   }
+  const lang = body?.lang === "en" ? "en" : "ja";
 
   try {
-    const result = await analyze(text, env.ANTHROPIC_API_KEY);
+    const result = await analyze(text, env.ANTHROPIC_API_KEY, lang);
 
     // Stats: record the analysis (anonymous, no text content stored)
     if (env.STATS) {
@@ -229,7 +233,11 @@ async function handleGetResult(id: string, env: Env): Promise<Response> {
   }
 }
 
-async function analyze(text: string, apiKey: string): Promise<AnalyzeResult> {
+async function analyze(
+  text: string,
+  apiKey: string,
+  lang: "ja" | "en" = "ja",
+): Promise<AnalyzeResult> {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -240,7 +248,7 @@ async function analyze(text: string, apiKey: string): Promise<AnalyzeResult> {
     body: JSON.stringify({
       model: "claude-haiku-4-5-20251001",
       max_tokens: 2048,
-      system: ANALYSIS_PROMPT,
+      system: buildPrompt(lang),
       messages: [{ role: "user", content: text }],
     }),
   });
@@ -260,7 +268,7 @@ async function analyze(text: string, apiKey: string): Promise<AnalyzeResult> {
     score: clamp(Math.round(Number(parsed.score) || 0), 0, 100),
     signals: Array.isArray(parsed.signals) ? parsed.signals.slice(0, 20) : [],
     summary: typeof parsed.summary === "string" ? parsed.summary : "",
-    disclaimer: DISCLAIMER,
+    disclaimer: lang === "en" ? DISCLAIMER_EN : DISCLAIMER_JA,
   };
 }
 
